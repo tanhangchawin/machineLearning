@@ -1,0 +1,177 @@
+%main function
+function [cost, theta1, theta2] = neuralNetwork(X, Y)
+  
+  %randomly initialize the training examples
+  Num = size(X, 1);
+  rand_indices = randperm(Num);
+  
+  
+  %split them up into training and validation sets
+  Xdata = X(rand_indices(1:round(0.6*Num)), :);
+  xval = X(rand_indices(round(0.6*Num+1):round(0.8*Num)), :);
+  
+  
+  %initialize parameters
+  firstLayer = size(Xdata, 2);
+  hiddenLayer = round(1*firstLayer);
+  num_labels = 1;
+  lambda = 2;
+  num_iters = 50;
+  
+  %initializing thetas
+  iniTheta1 = randomInitializeWeights(firstLayer, hiddenLayer);
+  iniTheta2 = randomInitializeWeights(hiddenLayer, num_labels);
+  
+  %normalized y values
+  Ynormalized = converter(Y);
+  
+  y = Ynormalized(rand_indices(1:round(0.6*Num)), :);
+  yval = Ynormalized(rand_indices(round(0.6*Num+1):round(0.8*Num)), :);
+  
+  %unroll parameters
+  ini_params = [iniTheta1(:);iniTheta2(:)];
+  
+  %run gradient descent
+  [cost, theta1, theta2] = gradientdescent(ini_params, firstLayer, hiddenLayer, num_labels, Xdata, y, lambda, num_iters)
+ 
+  %get training error values
+  [errorTrain, errorVal] = mainVal(Xdata, y, xval, yval, ini_params, firstLayer, hiddenLayer, num_labels, lambda, num_iters);
+  
+  
+  %plot validation graph
+  m = length(y);
+  plot(1:m, errorTrain, 1:m, errorVal);
+  title('Validation curve');
+  xlabel('Number of Training sets');
+  ylabel(' Error');
+  legend('Trained','Cross-validation');
+  
+  
+% function to initialize weights
+function iniTheta = randomInitializeWeights(layerIn, layerOut)
+  
+  %initialize theta
+  iniTheta = zeros(layerOut, 1+layerIn);
+  
+  epsilon = 0.15;
+  iniTheta = rand(layerOut, 1+layerIn)*2*epsilon-epsilon;
+  
+  
+% convert all y inputs to between 0-1 
+function Ynormalized = converter(yLog)
+  
+  Ynormalized = zeros(size(yLog));
+  m = size(yLog, 1);
+  n = size(yLog, 2);
+  
+  big = max(yLog);
+  small = min(yLog);
+  
+  for i=1:m
+    for j=1:n
+      Ynormalized(i, j)=(yLog(i,j)-small(j))/(big(j)-small(j));
+     end 
+   end  
+   
+  
+%sigmoid function
+function g = sigmoid(z) 
+  g = 1.0 ./ (1.0 + exp(-z));
+  
+%sigmoid gradient
+function g = sigmoidGradient(z)
+  
+  g = zeros(size(z));
+  g = sigmoid(z).*(1 - sigmoid(z));
+  
+  
+% neural network cost function
+function[J, grad] = nnCostFunction(nn_params, inputLayerSize, hiddenLayerSize, num_labels, X, Ynormalized, lambda)
+
+  %reshaping theta
+  Theta1 = reshape(nn_params(1:hiddenLayerSize * (inputLayerSize + 1)), hiddenLayerSize, (inputLayerSize + 1));
+  Theta2 = reshape(nn_params((1 + (hiddenLayerSize * (inputLayerSize + 1))):end), num_labels, (hiddenLayerSize + 1));
+  
+  m = size(X, 1);
+  J = 0;
+  Theta1_grad = zeros(size(Theta1));
+  Theta2_grad = zeros(size(Theta2));
+  
+  %part 1------------
+  K = num_labels;  %number of category
+  X = [ones(m,1) X]; %add ones
+  
+  for i = 1:m
+    X_i = X(i, :);
+    h_of_Xi = sigmoid( [1 sigmoid(X_i * Theta1')] * Theta2' );
+    
+    J = J + sum( -1 * Ynormalized(i) .* log(h_of_Xi) - (1 - Ynormalized(i)) .* log(1 - h_of_Xi) );
+  end;
+  
+  J = 1 / m * J;
+  % Add regularization term
+  J = J + (lambda / (2 * m) * (sum(sumsq(Theta1(:,2:inputLayerSize+1))) + sum(sumsq(Theta2(:,2:hiddenLayerSize+1)))));
+  
+  %part 2------------
+  delta_accum_1 = zeros(size(Theta1));
+  delta_accum_2 = zeros(size(Theta2));
+  
+  for t = 1:m
+    a_1 = X(t,:);
+    z_2 = a_1 * Theta1';
+    a_2 = [1 sigmoid(z_2)];
+    z_3 = a_2 * Theta2';
+    a_3 = sigmoid(z_3);
+    
+    delta_3 = a_3 - Ynormalized(t);
+    delta_2 = delta_3 * Theta2 .* sigmoidGradient([1 z_2]);
+    
+    delta_accum_1 = delta_accum_1 + delta_2(2:end)' * a_1;
+    delta_accum_2 = delta_accum_2 + delta_3' * a_2;
+  end;
+  
+  %part 3--------------
+  
+  Theta1_grad(:, 2:inputLayerSize+1) = Theta1_grad(:, 2:inputLayerSize+1) + lambda / m * Theta1(:, 2:inputLayerSize+1);
+  Theta2_grad(:, 2:hiddenLayerSize+1) = Theta2_grad(:, 2:hiddenLayerSize+1) + lambda / m * Theta2(:, 2:hiddenLayerSize+1);
+
+  % Unroll gradients
+  grad = [Theta1_grad(:) ; Theta2_grad(:)];
+  
+% gradient descent for neural network
+function [J_history, theta1, theta2] = gradientdescent(nn_params, inputLayerSize, hiddenLayerSize, num_labels, X, Ynormalized, lambda, num_iters)
+  
+  J_history = zeros(num_iters, 1);
+  
+  for i=1:num_iters
+    [J, grad] = nnCostFunction(nn_params, inputLayerSize, hiddenLayerSize, num_labels, X, Ynormalized, lambda);
+    J_history(i) = J;
+    nn_params = nn_params - grad;
+  end;
+  
+  %get back theta1 and theta2
+  theta1 = reshape(nn_params(1:hiddenLayerSize * (inputLayerSize + 1)), hiddenLayerSize, (inputLayerSize + 1));
+  
+  theta2 = reshape(nn_params((1 + (hiddenLayerSize * (inputLayerSize + 1))):end), num_labels, (hiddenLayerSize + 1));
+  
+  
+  
+  
+function [errorTrain, errorVal] = mainVal(X, yLog, xval, yvalLog, theta, inputLayerSize, hiddenLayerSize, num_labels, lambda, num_iters) % compute validation error
+   
+   % this function determines high bias or high variance
+   m = length(yLog);
+   mXval = length(yvalLog);%number of validation set
+   
+   errorTrain = zeros(m,1);
+   errorVal = zeros(m, 1);
+   
+   Xval = [ones(mXval, 1), xval];
+   
+   for i = 1:m
+     [J_history, theta1, theta2] = gradientdescent(theta, inputLayerSize, hiddenLayerSize, num_labels, X(1:i, :), yLog(1:i), lambda, num_iters);
+     errorTrain(i) = J_history(1);
+     newTheta = [theta1(:); theta2(:)];
+     [J_history1, theta3, theta4] = gradientdescent(newTheta, inputLayerSize, hiddenLayerSize, num_labels, xval, yvalLog, lambda, num_iters);
+     errorVal(i) = J_history1(1);
+   end 
